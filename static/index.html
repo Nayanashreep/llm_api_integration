@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Archie — Multi-Turn LLM Chatbot</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Markdown parsing library -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo-icon">🤖</div>
+        <div class="brand-text">
+          <h1>Archie <span class="tag">LLM Lab</span></h1>
+          <p class="subtitle">Multi-turn Conversation with Dynamic Context Window Management</p>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label for="personaSelect">Persona:</label>
+          <select id="personaSelect">
+            <option value="architect">Senior Architect</option>
+            <option value="socratic">Socratic Mentor</option>
+            <option value="reviewer">Code Reviewer</option>
+            <option value="companion">Tech Companion</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label for="strategySelect">Context Strategy:</label>
+          <select id="strategySelect">
+            <option value="summarization">Running Summarization</option>
+            <option value="sliding_window">Sliding Window (Truncate)</option>
+          </select>
+        </div>
+
+        <button id="inspectBtn" class="btn btn-secondary" title="Inspect context payload and memory">
+          🔍 Inspect Context
+        </button>
+
+        <button id="resetBtn" class="btn btn-danger" title="Clear conversation history">
+          🧹 New Chat
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Chat Workspace -->
+    <main class="chat-workspace">
+      <!-- Error Notification Banner -->
+      <div id="errorBanner" class="error-banner hidden">
+        <span class="error-icon">⚠️</span>
+        <div class="error-content">
+          <strong id="errorTitle">API Error</strong>
+          <p id="errorMessage">Something went wrong.</p>
+          <small id="errorSuggestion" class="error-suggestion"></small>
+        </div>
+        <button id="dismissErrorBtn" class="close-btn">&times;</button>
+      </div>
+
+      <!-- Messages Thread -->
+      <div id="messagesContainer" class="messages-container">
+        <!-- Welcome Screen -->
+        <div id="welcomeScreen" class="welcome-screen">
+          <div class="welcome-hero">
+            <div class="hero-emoji">🧠</div>
+            <h2>Meet Archie, Systems Architect & Coding Mentor</h2>
+            <p>
+              Built with genuine multi-turn history and smart context window management.
+              Archie remembers earlier turns through sliding window truncation and running summarization.
+            </p>
+          </div>
+
+          <div class="starter-cards">
+            <div class="starter-card" data-prompt="I'm planning to build a distributed URL shortener in Go and Redis. How should I generate unique short hashes?">
+              <span class="card-icon">⚡</span>
+              <h4>System Design</h4>
+              <p>Design a scalable URL shortener hashing strategy</p>
+            </div>
+            <div class="starter-card" data-prompt="My name is Alex and I'm learning Rust. Can you explain ownership and borrowing with a real-world analogy?">
+              <span class="card-icon">🦀</span>
+              <h4>Multi-turn Test</h4>
+              <p>Introduce yourself and test memory retention in later turns</p>
+            </div>
+            <div class="starter-card" data-prompt="Compare JWT vs server-side sessions for a high-traffic microservice. What are the key trade-offs?">
+              <span class="card-icon">🔐</span>
+              <h4>Architectural Trade-offs</h4>
+              <p>Evaluate auth mechanisms for microservices</p>
+            </div>
+            <div class="starter-card" data-prompt="Explain how your context window management handles conversation history when tokens run high.">
+              <span class="card-icon">🔍</span>
+              <h4>Context Window</h4>
+              <p>Ask Archie how its memory compaction works</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Input Area -->
+      <footer class="input-area">
+        <form id="chatForm" class="chat-form">
+          <div class="input-wrapper">
+            <textarea
+              id="messageInput"
+              rows="1"
+              placeholder="Ask Archie about architecture, code, or test memory retention... (Shift+Enter for new line)"
+              autocomplete="off"
+            ></textarea>
+            <button type="submit" id="sendBtn" class="send-btn" title="Send message">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+          <div class="input-hints">
+            <span id="turnCounter">Turn: 0</span>
+            <span class="separator">•</span>
+            <span id="providerInfo">Provider: Loading...</span>
+            <span class="separator">•</span>
+            <span id="strategyInfo">Strategy: Running Summarization (Max 6 msgs)</span>
+          </div>
+        </form>
+      </footer>
+    </main>
+
+    <!-- Context Inspector Drawer -->
+    <aside id="inspectorDrawer" class="inspector-drawer hidden">
+      <div class="drawer-header">
+        <h3>🔍 Context Window Inspector</h3>
+        <button id="closeDrawerBtn" class="close-btn">&times;</button>
+      </div>
+      <div class="drawer-body">
+        <p class="drawer-desc">
+          Live inspection of how the context manager prepares your conversation history before dispatching to the LLM.
+        </p>
+
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">Total Messages</span>
+            <span id="metricTotalMsgs" class="metric-val">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Active in Window</span>
+            <span id="metricActiveMsgs" class="metric-val">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Evicted / Summarized</span>
+            <span id="metricEvictedMsgs" class="metric-val">0</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Active Strategy</span>
+            <span id="metricStrategy" class="metric-val">Summarization</span>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h4>🧠 Running Memory Summary</h4>
+          <div id="inspectorSummaryBox" class="code-box">
+            <em class="dim">No evicted messages have been summarized yet. Chat beyond 6 messages to see summarization in action!</em>
+          </div>
+        </div>
+
+        <div class="drawer-section">
+          <h4>📋 Raw Active Context Window Payload</h4>
+          <pre id="inspectorPayloadBox" class="code-box json-box">[]</pre>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
